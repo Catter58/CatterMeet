@@ -1,35 +1,39 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from "react";
+import { DropZone } from "@/components/DropZone";
+import { TasksTable } from "@/components/TasksTable";
+import { ResultPage } from "@/components/ResultPage";
 
-function App() {
-  const [count, setCount] = useState(0)
+export default function App() {
+  const [taskIds, setTaskIds] = useState<string[]>([]);
+  const [viewingTaskId, setViewingTaskId] = useState<string | null>(null);
+
+  const handleUploaded = (taskId: string) => {
+    setTaskIds((prev) => [taskId, ...prev]);
+  };
+
+  if (viewingTaskId) {
+    return (
+      <div className="min-h-screen bg-gray-50 p-6">
+        <div className="max-w-4xl mx-auto h-[calc(100vh-3rem)] flex flex-col">
+          <ResultPage
+            taskId={viewingTaskId}
+            onBack={() => setViewingTaskId(null)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">CatterMeet</h1>
+        <p className="text-gray-500 mb-8">
+          Транскрибация и диаризация аудио/видео
         </p>
+        <DropZone onUploaded={handleUploaded} />
+        <TasksTable taskIds={taskIds} onViewResult={setViewingTaskId} />
       </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    </div>
+  );
 }
-
-export default App
