@@ -46,10 +46,10 @@ RUN find /usr/local/lib/python3.11/site-packages \
     -type d \( -name "tests" -o -name "test" -o -name "testing" \) \
     -exec rm -rf {} + 2>/dev/null || true
 
-# 5. Remove torch's own tests, benchmarks, and unused backends
+# 5. Remove torch's own test directories (but NOT torch/utils — it's a core module)
 RUN find /usr/local/lib/python3.11/site-packages/torch \
     -maxdepth 1 -type d \
-    \( -name "test" -o -name "testing" -o -name "utils" \) \
+    \( -name "test" -o -name "testing" \) \
     -exec rm -rf {} + 2>/dev/null || true
 
 # 6. Remove ctranslate2 CUDA libraries (we only use CPU)
