@@ -48,28 +48,34 @@ def _run_vad(wav_path: str) -> list:
 
 
 def _run_stt(wav_path: str, vad_segments: list) -> list:
-    """Transcribe with faster-whisper, only over VAD segments. Evict model after use."""
+    """Transcribe with faster-whisper in a single pass over all VAD segments. Evict model after use."""
     from faster_whisper import WhisperModel
 
     model = WhisperModel("large-v3-turbo", device="cpu", compute_type="int8")
 
-    results = []
+    # Pass all VAD timestamps at once: [start1, end1, start2, end2, ...]
+    # This reads the audio exactly once instead of once per segment.
+    all_clip_timestamps = []
     for seg in vad_segments:
-        segments_iter, _ = model.transcribe(
-            wav_path,
-            language=None,          # auto-detect (ru/en)
-            beam_size=5,
-            clip_timestamps=[seg["start"], seg["end"]],
-            word_timestamps=False,
-        )
-        for s in segments_iter:
-            text = s.text.strip()
-            if text:
-                results.append({
-                    "start_time": float(s.start),
-                    "end_time": float(s.end),
-                    "text": text,
-                })
+        all_clip_timestamps.extend([seg["start"], seg["end"]])
+
+    segments_iter, _ = model.transcribe(
+        wav_path,
+        language=None,          # auto-detect (ru/en)
+        beam_size=5,
+        clip_timestamps=all_clip_timestamps,
+        word_timestamps=False,
+    )
+
+    results = []
+    for s in segments_iter:
+        text = s.text.strip()
+        if text:
+            results.append({
+                "start_time": float(s.start),
+                "end_time": float(s.end),
+                "text": text,
+            })
 
     del model
     gc.collect()
