@@ -36,6 +36,25 @@ COPY backend/ ./
 # Copy built frontend into static folder
 COPY --from=frontend-builder /app/frontend/dist ./static
 
+# Pre-download all ML models during build so first run is instant
+RUN python -c "\
+from faster_whisper import WhisperModel; \
+print('Downloading Whisper large-v3-turbo...'); \
+WhisperModel('large-v3-turbo', device='cpu', compute_type='int8'); \
+print('Whisper OK')"
+
+RUN python -c "\
+from silero_vad import load_silero_vad; \
+print('Downloading silero-vad...'); \
+load_silero_vad(); \
+print('silero-vad OK')"
+
+RUN python -c "\
+from speechbrain.inference.speaker import SpeakerRecognition; \
+print('Downloading ECAPA-TDNN...'); \
+SpeakerRecognition.from_hparams(source='speechbrain/spkrec-ecapa-voxceleb', savedir='pretrained_models/spkrec-ecapa-voxceleb', run_opts={'device': 'cpu'}); \
+print('ECAPA-TDNN OK')"
+
 # Create upload dir (volume mount will overlay this)
 RUN mkdir -p uploads db
 
