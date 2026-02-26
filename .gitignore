@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.db
+pretrained_models/
+
+# Node
+node_modules/
+dist/
+
+# App uploads (keep .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Built frontend (keep .gitkeep)
+backend/static/*
+!backend/static/.gitkeep
+
+# Data directory (docker volumes)
+data/
