@@ -12,6 +12,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
+MODELS_DIR = os.environ.get("MODELS_DIR", "pretrained_models")
 
 
 def _convert_to_wav(input_path: str, output_path: str) -> None:
@@ -84,7 +85,7 @@ def _run_diarization(wav_path: str, segments: list) -> list:
 
     spk_model = SpeakerRecognition.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb",
-        savedir="pretrained_models/spkrec-ecapa-voxceleb",
+        savedir=f"{MODELS_DIR}/spkrec-ecapa-voxceleb",
         run_opts={"device": "cpu"},
     )
 

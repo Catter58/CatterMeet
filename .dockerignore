@@ -1,0 +1,36 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.db
+*.egg-info/
+
+# Tests (not needed in image)
+backend/tests/
+backend/pytest.ini
+
+# Node / frontend build artifacts
+frontend/node_modules/
+frontend/dist/
+
+# Data volumes (mounted at runtime)
+data/
+
+# Docs / plans
+docs/
+initial.md
+README.md
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
