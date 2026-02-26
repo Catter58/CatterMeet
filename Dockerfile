@@ -8,13 +8,11 @@ COPY frontend/ ./
 RUN npm run build
 
 
-# ── Stage 2: Python dependency builder ─────────────────────────────────────
+# ── Stage 2: Python dependency builder (clean install, no stripping) ────────
 FROM python:3.11-slim AS python-builder
 
-# Build tools needed to compile some Python extensions
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    binutils \
     && rm -rf /var/lib/apt/lists/*
 
 # CPU-only torch — avoids the default 2.5 GB CUDA wheel from PyPI
@@ -26,42 +24,11 @@ RUN pip install --no-cache-dir \
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# ── Strip everything that is not needed at runtime ──────────────────────────
-# 1. Strip debug symbols from all compiled extensions (~10-20% size reduction)
-RUN find /usr/local/lib/python3.11/site-packages \
-    -name "*.so" -exec strip --strip-debug {} \; 2>/dev/null || true
-
-# 2. Remove __pycache__ and .pyc bytecode (they are regenerated at runtime)
-RUN find /usr/local/lib/python3.11/site-packages \
-    \( -type d -name "__pycache__" -o -name "*.pyc" -o -name "*.pyo" \) \
-    -exec rm -rf {} + 2>/dev/null || true
-
-# 3. Remove package metadata (.dist-info / .egg-info) — not needed at runtime
-RUN find /usr/local/lib/python3.11/site-packages \
-    \( -type d -name "*.dist-info" -o -type d -name "*.egg-info" \) \
-    -exec rm -rf {} + 2>/dev/null || true
-
-# 4. Remove test suites bundled inside packages
-RUN find /usr/local/lib/python3.11/site-packages \
-    -type d \( -name "tests" -o -name "test" -o -name "testing" \) \
-    -exec rm -rf {} + 2>/dev/null || true
-
-# 5. Remove torch's own test directories (but NOT torch/utils — it's a core module)
-RUN find /usr/local/lib/python3.11/site-packages/torch \
-    -maxdepth 1 -type d \
-    \( -name "test" -o -name "testing" \) \
-    -exec rm -rf {} + 2>/dev/null || true
-
-# 6. Remove ctranslate2 CUDA libraries (we only use CPU)
-RUN find /usr/local/lib/python3.11/site-packages/ctranslate2 \
-    -name "*cuda*" -o -name "*cublas*" -o -name "*cudnn*" \
-    | xargs rm -f 2>/dev/null || true
-
 
 # ── Stage 3: Download ML models ─────────────────────────────────────────────
+# Inherits from the CLEAN (unstripped) builder so models download reliably
 FROM python-builder AS model-downloader
 
-# Deterministic cache paths so final stage knows where to COPY from
 ENV HF_HOME=/models/hf
 ENV MODELS_DIR=/models/sb
 
@@ -78,7 +45,6 @@ load_silero_vad(); \
 print('silero-vad OK')"
 
 RUN python -c "\
-import os; \
 from speechbrain.inference.speaker import SpeakerRecognition; \
 print('Downloading ECAPA-TDNN...'); \
 SpeakerRecognition.from_hparams( \
@@ -91,16 +57,53 @@ print('ECAPA-TDNN OK')"
 # ── Stage 4: Final runtime image ────────────────────────────────────────────
 FROM python:3.11-slim
 
-# Only the runtime system libraries — no build tools
+# Runtime system libs + binutils for strip (removed in same layer to save space)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsndfile1 \
-    && rm -rf /var/lib/apt/lists/*
+    binutils \
+    && \
+    # ── Copy Python packages from builder then strip in one layer ──────────
+    true
 
-# Python packages from builder (stripped, no pip cache, no build tools)
+# Copy site-packages from the clean builder
 COPY --from=python-builder \
     /usr/local/lib/python3.11/site-packages \
     /usr/local/lib/python3.11/site-packages
+
+# Strip debug symbols and remove bytecode cache — all in one RUN to keep layers thin
+RUN \
+    # Strip debug symbols from compiled extensions (~10-20% size reduction on .so files)
+    find /usr/local/lib/python3.11/site-packages \
+        -name "*.so" -exec strip --strip-debug {} \; 2>/dev/null || true \
+    && \
+    # Remove ctranslate2 CUDA shared libs (we are CPU-only)
+    find /usr/local/lib/python3.11/site-packages/ctranslate2 \
+        \( -name "*cuda*" -o -name "*cublas*" -o -name "*cudnn*" \) \
+        -exec rm -f {} \; 2>/dev/null || true \
+    && \
+    # Remove __pycache__ and .pyc bytecode (regenerated on first import, not needed in image)
+    find /usr/local/lib/python3.11/site-packages \
+        \( -type d -name "__pycache__" -o -name "*.pyc" -o -name "*.pyo" \) \
+        -exec rm -rf {} + 2>/dev/null || true \
+    && \
+    # Remove .dist-info and .egg-info metadata (pip is not used at runtime)
+    find /usr/local/lib/python3.11/site-packages \
+        \( -type d -name "*.dist-info" -o -type d -name "*.egg-info" \) \
+        -exec rm -rf {} + 2>/dev/null || true \
+    && \
+    # Remove test suites from SAFE packages only (not torch — its internals are fragile)
+    for pkg in scipy sklearn speechbrain huggingface_hub transformers tqdm \
+                aiofiles fastapi starlette uvicorn pydantic; do \
+        find /usr/local/lib/python3.11/site-packages/$pkg \
+            -type d \( -name "tests" -o -name "test" \) \
+            -exec rm -rf {} + 2>/dev/null || true; \
+    done \
+    && \
+    # Remove binutils after stripping (no longer needed at runtime)
+    apt-get remove -y --purge binutils \
+    && apt-get autoremove -y \
+    && rm -rf /var/lib/apt/lists/*
 
 # Pre-downloaded ML models
 ENV HF_HOME=/models/hf
@@ -109,16 +112,11 @@ COPY --from=model-downloader /models /models
 
 WORKDIR /app
 
-# Backend source (tests and pytest.ini excluded via .dockerignore)
 COPY backend/ ./
-
-# Built frontend static files
 COPY --from=frontend-builder /app/frontend/dist ./static
 
-# Persistent data directories (overridden by docker-compose volumes)
 RUN mkdir -p uploads db
 
 EXPOSE 8000
 
-# Use python -m to avoid needing the uvicorn script in /usr/local/bin
 CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
