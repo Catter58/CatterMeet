@@ -61,7 +61,8 @@ def _init_db_sync() -> None:
 
             CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
                 text,
-                task_id UNINDEXED
+                task_id UNINDEXED,
+                transcript_id UNINDEXED
             );
         """)
 
@@ -115,13 +116,14 @@ async def save_transcript(task_id: str, segments: list) -> None:
 def _save_transcript_sync(task_id: str, segments: list) -> None:
     with _get_conn() as conn:
         for seg in segments:
-            conn.execute(
+            cursor = conn.execute(
                 "INSERT INTO transcripts (task_id, start_time, end_time, speaker, text) VALUES (?,?,?,?,?)",
                 (task_id, seg["start_time"], seg["end_time"], seg["speaker"], seg["text"]),
             )
+            transcript_id = cursor.lastrowid
             conn.execute(
-                "INSERT INTO transcripts_fts (text, task_id) VALUES (?, ?)",
-                (seg["text"], task_id),
+                "INSERT INTO transcripts_fts (text, task_id, transcript_id) VALUES (?, ?, ?)",
+                (seg["text"], task_id, transcript_id),
             )
 
 
@@ -147,28 +149,21 @@ async def search_transcripts(query: str, task_id: Optional[str] = None) -> list:
 def _search_sync(query: str, task_id: Optional[str]) -> list:
     with _get_conn() as conn:
         if task_id:
-            # Use FTS5 to find matching texts, then fetch from transcripts
-            fts_rows = conn.execute(
-                "SELECT text FROM transcripts_fts WHERE transcripts_fts MATCH ? AND task_id = ?",
+            rows = conn.execute(
+                """SELECT t.task_id, t.start_time, t.end_time, t.speaker, t.text
+                   FROM transcripts_fts fts
+                   JOIN transcripts t ON t.id = fts.transcript_id
+                   WHERE transcripts_fts MATCH ? AND fts.task_id = ?
+                   ORDER BY rank""",
                 (query, task_id),
             ).fetchall()
         else:
-            fts_rows = conn.execute(
-                "SELECT text, task_id FROM transcripts_fts WHERE transcripts_fts MATCH ?",
+            rows = conn.execute(
+                """SELECT t.task_id, t.start_time, t.end_time, t.speaker, t.text
+                   FROM transcripts_fts fts
+                   JOIN transcripts t ON t.id = fts.transcript_id
+                   WHERE transcripts_fts MATCH ?
+                   ORDER BY rank""",
                 (query,),
             ).fetchall()
-
-        results = []
-        for fts_row in fts_rows:
-            if task_id:
-                rows = conn.execute(
-                    "SELECT task_id, start_time, end_time, speaker, text FROM transcripts WHERE text = ? AND task_id = ?",
-                    (fts_row["text"], task_id),
-                ).fetchall()
-            else:
-                rows = conn.execute(
-                    "SELECT task_id, start_time, end_time, speaker, text FROM transcripts WHERE text = ? AND task_id = ?",
-                    (fts_row["text"], fts_row["task_id"]),
-                ).fetchall()
-            results.extend([dict(r) for r in rows])
-        return results
+        return [dict(r) for r in rows]

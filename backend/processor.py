@@ -80,7 +80,7 @@ def _run_diarization(wav_path: str, segments: list) -> list:
     """Extract speaker embeddings (ECAPA-TDNN), cluster with KMeans. Evict model after use."""
     import torch
     import torchaudio
-    from speechbrain.pretrained import SpeakerRecognition
+    from speechbrain.inference.speaker import SpeakerRecognition
 
     spk_model = SpeakerRecognition.from_hparams(
         source="speechbrain/spkrec-ecapa-voxceleb",

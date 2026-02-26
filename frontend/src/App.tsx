@@ -4,11 +4,22 @@ import { TasksTable } from "@/components/TasksTable";
 import { ResultPage } from "@/components/ResultPage";
 
 export default function App() {
-  const [taskIds, setTaskIds] = useState<string[]>([]);
+  const [taskIds, setTaskIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem("cattermeet_task_ids");
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  });
   const [viewingTaskId, setViewingTaskId] = useState<string | null>(null);
 
   const handleUploaded = (taskId: string) => {
-    setTaskIds((prev) => [taskId, ...prev]);
+    setTaskIds((prev) => {
+      const next = [taskId, ...prev];
+      localStorage.setItem("cattermeet_task_ids", JSON.stringify(next));
+      return next;
+    });
   };
 
   if (viewingTaskId) {

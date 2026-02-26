@@ -22,11 +22,21 @@ function formatTime(seconds: number): string {
   return `${m}:${s}`;
 }
 
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 function highlight(text: string, query: string): string {
-  if (!query.trim()) return text;
-  const escaped = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return text.replace(
-    new RegExp(`(${escaped})`, "gi"),
+  const safeText = escapeHtml(text);
+  if (!query.trim()) return safeText;
+  const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return safeText.replace(
+    new RegExp(`(${escapedQuery})`, "gi"),
     '<mark class="bg-yellow-200 rounded-sm">$1</mark>'
   );
 }

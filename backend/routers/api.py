@@ -14,17 +14,27 @@ router = APIRouter(prefix="/api")
 
 UPLOAD_DIR = os.environ.get("UPLOAD_DIR", "uploads")
 
+ALLOWED_EXTENSIONS = {
+    ".mp3", ".mp4", ".wav", ".m4a", ".aac", ".ogg", ".flac",
+    ".webm", ".mkv", ".mov", ".avi", ".wma", ".opus", ".3gp",
+}
+
 
 @router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
     ext = Path(file.filename or "audio.bin").suffix or ".bin"
+    if ext.lower() not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{ext}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
     safe_name = f"{uuid.uuid4()}{ext}"
     dest = Path(UPLOAD_DIR) / safe_name
     dest.parent.mkdir(parents=True, exist_ok=True)
 
     async with aiofiles.open(str(dest), "wb") as f:
-        content = await file.read()
-        await f.write(content)
+        while chunk := await file.read(1024 * 1024):  # 1 MB chunks
+            await f.write(chunk)
 
     task_id = await database.create_task(safe_name)
     await task_queue.put(task_id)

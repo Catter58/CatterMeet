@@ -19,6 +19,14 @@ WORKDIR /app
 
 # Python deps first (layer cache)
 COPY backend/requirements.txt ./
+
+# Install CPU-only torch first (avoids downloading the 2.5 GB CUDA wheel)
+RUN pip install --no-cache-dir \
+    torch==2.5.1 \
+    torchaudio==2.5.1 \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install remaining Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy backend source
@@ -28,7 +36,7 @@ COPY backend/ ./
 COPY --from=frontend-builder /app/frontend/dist ./static
 
 # Create upload dir (volume mount will overlay this)
-RUN mkdir -p uploads
+RUN mkdir -p uploads db
 
 EXPOSE 8000
 
